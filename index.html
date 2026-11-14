@@ -1228,7 +1228,18 @@ function omrV(app){
   const qs=t.qs.map((q,i)=>({...q,original:i})).map(q=>q.t==="tf"?{...q,t:"mc",o:["صح","خطأ"],a:q.a?0:1}:q).filter(q=>q.t==="mc"&&q.o&&q.o.length>=2&&q.o.length<=6).slice(0,25);
   const skipped=t.qs.length-qs.length;
   stage.append(el("div",{class:"card omr-hero"},el("div",{class:"omr-kicker"},"التصحيح الذكي · OMR"),el("h2",{},"مركز تصحيح أوراق الإجابة"),el("div",{class:"mu"},"اطبع النموذج، صوّر الأوراق دفعة واحدة، ثم راجع النتائج واعتمدها. لا تُرحّل أي درجة تلقائياً قبل مراجعتك."),el("div",{class:"omr-metrics"},el("div",{},el("b",{},qs.length),el("span",{},"سؤال قابل للمسح")),el("div",{},el("b",{},c.students.length),el("span",{},"طالب في الفصل")),el("div",{},el("b",{},"25"),el("span",{},"حد الأسئلة"))),el("div",{class:"feature-note"},"لأفضل قراءة: اطبع على ورق A4 بالحجم الفعلي دون تصغير، لا تقص مربعات الزوايا، واستخدم قلماً داكناً. يدعم النموذج الحالي 2–6 خيارات وأسئلة صح/خطأ. راجع كل ورقة قبل اعتماد الدرجة."),el("div",{class:"mu"},"أسئلة غير مشمولة في المسح: "+skipped),el("div",{class:"omr-actions"},el("button",{class:"btn",onclick:()=>printOMR(t,c,qs,null)},"طباعة نموذج عام"),el("button",{class:"btn o",onclick:()=>printOMR(t,c,qs,c.students)},"طباعة نموذج لكل طالب"))));
-  const info=el("div",{class:"card"},el("h3",{},"1 · إضافة أوراق الطلاب"),el("div",{class:"omr-upload-grid"},el("button",{class:"btn",onclick:()=>cameraFile.click()},"تصوير ورقة بالكاميرا"),el("button",{class:"btn o",onclick:()=>files.click()},"رفع عدة صور دفعة واحدة")),el("div",{class:"mu"},"يمكنك اختيار صور متعددة من جهازك. سيحاول النظام قراءة باركود الطالب المطبوع في النموذج الفردي، وإلا اختر الطالب يدوياً."),files,cameraFile,stats);
+  let liveStream=null,liveTimer=null,liveBusy=false;
+  const stopLive=()=>{if(liveTimer)cancelAnimationFrame(liveTimer);liveTimer=null;if(liveStream){liveStream.getTracks().forEach(x=>x.stop());liveStream=null}liveBusy=false};
+  const startLiveScanner=async()=>{
+   stopLive();const panel=el("div",{class:"card",style:"border:2px solid var(--g)"}),video=el("video",{autoplay:true,playsinline:true,muted:true,style:"width:100%;max-height:58vh;object-fit:contain;background:#111;border-radius:12px"}),status=el("div",{class:"hint"},"وجّه الكاميرا نحو الورقة كاملة. حرّك الجوال ببطء حتى تظهر علامات الزوايا الأربع داخل الإطار."),cv=document.createElement("canvas"),ctx=cv.getContext("2d",{willReadFrequently:true});
+   const stopBtn=el("button",{class:"btn o",onclick:()=>{stopLive();panel.remove()}},"إيقاف الكاميرا");panel.append(el("h3",{},"المسح التلقائي للورقة"),video,status,stopBtn);out.prepend(panel);
+   try{liveStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1600},height:{ideal:2200}},audio:false});video.srcObject=liveStream;await video.play();status.textContent="جاري البحث عن الورقة وضبط الميلان والمنظور تلقائياً…";
+    let last=0;const tick=now=>{if(!liveStream||liveBusy)return;if(now-last>450&&video.videoWidth){last=now;const scale=Math.min(1,1000/Math.max(video.videoWidth,video.videoHeight));cv.width=Math.round(video.videoWidth*scale);cv.height=Math.round(video.videoHeight*scale);ctx.drawImage(video,0,0,cv.width,cv.height);const d=ctx.getImageData(0,0,cv.width,cv.height).data,g=new Uint8Array(cv.width*cv.height);for(let i=0,k=0;i<g.length;i++,k+=4)g[i]=(d[k]*299+d[k+1]*587+d[k+2]*114)/1000;const test=omrScan(g,cv.width,cv.height,qs);
+     if(test.ok){liveBusy=true;status.textContent="تم العثور على الورقة وضبط حدودها! جاري التقاطها…";cv.toBlob(blob=>{stopLive();panel.remove();if(blob)processFile(new File([blob],"scan-auto-"+Date.now()+".jpg",{type:"image/jpeg"}),batch.children.length)},"image/jpeg",.94);return}
+    }liveTimer=requestAnimationFrame(tick)};liveTimer=requestAnimationFrame(tick);
+   }catch(e){stopLive();status.textContent="تعذر تشغيل الكاميرا. اسمح بالوصول للكاميرا أو استخدم رفع الصور.";panel.append(el("button",{class:"btn o",onclick:()=>cameraFile.click()},"اختيار صورة بدلاً من الكاميرا"))}
+  };
+  const info=el("div",{class:"card"},el("h3",{},"1 · إضافة أوراق الطلاب"),el("div",{class:"omr-upload-grid"},el("button",{class:"btn",onclick:()=>startLiveScanner()},"📷 مسح مباشر مع ضبط الورقة تلقائياً"),el("button",{class:"btn o",onclick:()=>files.click()},"رفع عدة صور دفعة واحدة")),el("div",{class:"mu"},"يمكنك اختيار صور متعددة من جهازك. سيحاول النظام قراءة باركود الطالب المطبوع في النموذج الفردي، وإلا اختر الطالب يدوياً."),files,cameraFile,stats);
   const resultsHead=el("div",{class:"card"},el("h3",{},"2 · مراجعة النتائج"),el("div",{class:"mu"},"تظهر كل ورقة في بطاقة مستقلة. صحّح أي قراءة غير واضحة ثم اعتمدها."),batch);
   out.append(info,resultsHead);
   const processFile=(f,index)=>{const item=el("div",{class:"card omr-batch-item"});item.dataset.saved="0";item.append(el("div",{class:"row",style:"justify-content:space-between;align-items:center"},el("b",{},"ورقة "+(index+1)+" · "+f.name),el("span",{class:"badge"},"جارٍ التحليل")));batch.append(item);
@@ -1927,17 +1938,39 @@ function formsV(app){
    el("div",{class:"toolbar",style:"margin-top:8px"},el("button",{class:"btn s",onclick:()=>window.open(f.url,"_blank")},"فتح"),el("button",{class:"btn s o",onclick:copy},"نسخ الرابط"),el("button",{class:"btn s o",onclick:qr},"QR"),el("button",{class:"btn s o",onclick:share},"مشاركة"),
    el("button",{class:"del",onclick:()=>{if(confirm("حذف الاختبار؟")){S.forms=S.forms.filter(x=>x!==f);save();render()}}},ic("trash",18)))))});
 }
-Object.assign(TITLES,{barcode:"صانع الباركود",forms:"اختبارات الروابط",curr:"شرح المناهج"});
+Object.assign(TITLES,{barcode:"صانع الباركود",forms:"اختبارات المعلم",curr:"شرح المناهج"});
 const _sp2=space;space=function(app){_sp2(app);app.append(el("div",{class:"sec"},"باركود واختبارات ومناهج"),
  menuRow("صانع الباركود","أنشئ QR أو باركود لأي نص أو رابط","print","#0891b2","barcode"),
- menuRow("اختبارات الروابط","اختبارات Google Forms وMicrosoft Forms بالرابط أو QR","doc","#3b82f6","forms"),
+ 
  menuRow("شرح مناهج المملكة","مكتبة شروحات تأسيسية للصفوف الابتدائية والمتوسطة والثانوية","plus","#16834a","curr"))};
-const _tv2=testsV;testsV=function(app){_tv2(app);app.append(el("button",{class:"btn o",onclick:()=>go("forms")},"+ اختبارات بالروابط (Forms)"))};
+
 function syncBar(){let m=document.querySelector('meta[name=theme-color]');if(!m){m=document.createElement("meta");m.name="theme-color";document.head.append(m)}m.content=getComputedStyle(document.documentElement).getPropertyValue("--hb").trim()||"#fff"}
 const _r2=render;render=function(){_r2();syncBar()};
 try{matchMedia("(prefers-color-scheme:dark)").addEventListener("change",syncBar)}catch(e){}
 
-render();
+
+/* ===== اختبارات من إنشاء المعلم + روابط مشاركة ذاتية ===== */
+function quizPack(t){return {id:t.id,title:t.title,questions:t.qs.map(q=>({type:q.t,text:q.q,options:q.o||[],points:Number(q.p)||1}))}}
+function encPack(o){const bytes=new TextEncoder().encode(JSON.stringify(o));let bin='';bytes.forEach(b=>bin+=String.fromCharCode(b));return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+function decPack(v){const b=v.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(b+'='.repeat((4-b.length%4)%4));return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))))}
+function sharedQuizScreen(payload){
+ document.body.innerHTML='';document.body.dir='rtl';document.body.style.cssText='margin:0;background:#f4f6fa;font-family:Tahoma,Arial;color:#172033;padding:16px';
+ const root=el('div',{style:'max-width:760px;margin:20px auto;background:white;border-radius:18px;padding:20px;box-shadow:0 8px 30px #0001'});root.append(el('h1',{},payload.title),el('p',{style:'color:#667085'},'اختبار إلكتروني من إعداد المعلم'));
+ const name=el('input',{placeholder:'اسم الطالب',style:'width:100%;padding:13px;border:1px solid #ccd2dc;border-radius:10px;box-sizing:border-box'}),answers=[];root.append(el('label',{},'اسم الطالب'),name);
+ payload.questions.forEach((q,i)=>{const box=el('section',{style:'padding:14px;margin:14px 0;border:1px solid #e2e6ed;border-radius:12px'});box.append(el('b',{},(i+1)+'. '+q.text+' ('+q.points+' درجة)'));let inp;
+  if(q.type==='mc'){inp=el('select',{style:'display:block;width:100%;padding:12px;margin-top:10px;border:1px solid #ccd2dc;border-radius:9px'},el('option',{value:''},'اختر إجابة'));q.options.forEach((o,j)=>inp.append(el('option',{value:j},o)))}
+  else if(q.type==='tf')inp=el('select',{style:'display:block;width:100%;padding:12px;margin-top:10px;border:1px solid #ccd2dc;border-radius:9px'},el('option',{value:''},'اختر'),el('option',{value:'true'},'صح'),el('option',{value:'false'},'خطأ'));
+  else inp=el('textarea',{placeholder:'اكتب إجابتك هنا',style:'display:block;width:100%;min-height:80px;padding:12px;margin-top:10px;border:1px solid #ccd2dc;border-radius:9px;box-sizing:border-box'});
+  answers.push(inp);box.append(inp);root.append(box)});
+ const submit=el('button',{style:'width:100%;padding:14px;background:#16834a;color:white;border:0;border-radius:10px;font-size:16px;cursor:pointer'},'إرسال الإجابات');
+ submit.onclick=()=>{if(!name.value.trim())return alert('اكتب اسمك أولاً');if(answers.some((a,i)=>!String(a.value).trim()))return alert('أجب عن جميع الأسئلة قبل الإرسال');const result={quizId:payload.id,title:payload.title,student:name.value.trim(),submittedAt:new Date().toISOString(),answers:answers.map(a=>a.value)};const url=location.href.split('#')[0]+'#result='+encPack(result);const shareText='نتيجة اختبار '+payload.title+' للطالب '+result.student+'\n'+url;if(navigator.share)navigator.share({title:'نتيجة الاختبار',text:shareText}).catch(()=>prompt('انسخ رابط النتيجة وأرسله للمعلم:',url));else prompt('انسخ رابط النتيجة وأرسله للمعلم:',url);submit.textContent='تم تجهيز رابط النتيجة';};root.append(submit);document.body.append(root);
+}
+function sharedResultScreen(r){document.body.innerHTML='';document.body.dir='rtl';document.body.style.cssText='margin:0;background:#f4f6fa;font-family:Tahoma;padding:16px;color:#172033';const box=el('div',{style:'max-width:700px;margin:20px auto;background:white;padding:22px;border-radius:16px'});box.append(el('h2',{},'إجابة اختبار مستلمة'),el('p',{},'الاختبار: '+r.title),el('p',{},'الطالب: '+r.student),el('p',{},'وقت الإرسال: '+new Date(r.submittedAt).toLocaleString('ar-SA')),el('h3',{},'الإجابات'));r.answers.forEach((a,i)=>box.append(el('p',{},(i+1)+'. '+a)));box.append(el('p',{style:'color:#667085'},'هذه صفحة عرض للإجابات المرسلة. راجع الإجابات الكتابية وصحّحها من حساب المعلم.'));document.body.append(box)}
+const _testVShare=testV;testV=function(app){_testVShare(app);const t=S.tests.find(x=>x.id===arg);if(!t)return;const btn=el('button',{class:'btn',onclick:()=>{if(!t.qs.length)return alert('أضف أسئلة أولاً');const url=location.href.split('#')[0]+'#quiz='+encPack(quizPack(t));modal(el('div',{},el('h2',{},'رابط الاختبار للطلاب'),el('div',{class:'hint'},'أنشئ الرابط بعد رفع التطبيق على GitHub Pages، ثم أرسله للطلاب. الطالب يفتح الرابط ويحل الاختبار، وبعد الإرسال يشاركك رابط النتيجة.'),el('input',{value:url,dir:'ltr',style:'width:100%;padding:10px;box-sizing:border-box'},),el('button',{class:'btn',onclick:()=>{navigator.clipboard?.writeText(url).then(()=>alert('تم نسخ رابط الاختبار')).catch(()=>prompt('انسخ الرابط:',url));}} ,'نسخ الرابط'),el('button',{class:'btn o',onclick:()=>{closeM();window.open(url,'_blank')}},'معاينة الاختبار'),el('button',{class:'btn o',onclick:closeM},'إغلاق')))}},'🔗 إنشاء رابط للطلاب');app.append(btn)};
+pages.test=testV;
+
+const _initialHash=location.hash;try{if(_initialHash.startsWith('#quiz='))sharedQuizScreen(decPack(_initialHash.slice(6)));else if(_initialHash.startsWith('#result='))sharedResultScreen(decPack(_initialHash.slice(8)));else render()}catch(e){document.body.innerHTML='<div dir="rtl" style="padding:30px;font-family:Tahoma">تعذر فتح الاختبار أو النتيجة. تأكد من صحة الرابط.</div>'}
+
 </script>
 </body>
 </html>
